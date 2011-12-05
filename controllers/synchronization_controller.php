@@ -12,40 +12,64 @@ class SynchronizationController extends AppController {
 		'added'		=> 0,
 		'synced'	=> 0,
 	);
-		
-/**
- * - Syncs WebApp->CampaignMonitor
- * - Assumes you have already have an existing list you want to sync with...
- */	
-	function admin_synchronize_subscribers() {
+	
+	function beforeFilter() {
 		
 		Configure::write('debug', 2);
 		
-		$settings			= Configure::read('CampaignMonitor.settings');
-		$this->Subscriber	= ClassRegistry::init($settings['subcriber_model']);
+		$this->settings		= Configure::read('CampaignMonitor.settings');
+		$this->Subscriber	= ClassRegistry::init($this->settings['subcriber_model']);
+		
+		# Setup the Subscriber record
+		# BAH - should refactor
+		$this->Subscriber->Behaviors->attach('CampaignMonitor.Subscriber', array(
+			'ApiKey'		=> $this->settings['API_KEY'],
+			'ListId'		=> $this->settings['LIST_ID'],
+			'CustomFields'	=> $this->settings['CUSTOM_FIELDS'],
+			'optin'			=> $this->settings['optin'],
+			'config'		=> $this->settings
+		));
+		
+		parent::beforeFilter();
+	}
+		
+/**
+ * Syncs WebApp->CampaignMonitor
+ * - Only syncs Subscribers that have never been updated...
+ */	
+	function admin_synchronize_new_subscribers() {
+		
+		$this->Subscriber->contain();
+		$records = $this->Subscriber->find('all', array(
+			'conditions' => array(
+				"{$this->Subscriber->alias}.{$this->settings['sync_key']} IS NULL",
+			),
+			'limit'	=> $this->settings['records_per_sync']
+		));
+					
+		$this->__sync($records);
+	}
+	
+/**
+ * Syncs WebApp->CampaignMonitor
+ * - Syncs Subscribers that have not been synced synced in the last 24 hours ??
+ */		
+	function admin_synchronize_subscribers() {
 		
 		# Get the records that have not yet been synced or updated in the last day
 		$this->Subscriber->contain();
 		$records = $this->Subscriber->find('all', array(
 			'conditions' => array(
-				'OR' => array(
-					//"{$this->Subscriber->alias}.{$settings['sync_key']}" => date('Y-m-d H:i:s', strtotime('-1 Day', time())),
-					"{$this->Subscriber->alias}.{$settings['sync_key']} IS NULL",
-				)
+				"{$this->Subscriber->alias}.{$this->settings['sync_key']}" => date('Y-m-d H:i:s', strtotime('-1 Day', time())),
 			),
-			'limit'	=> $settings['records_per_sync']
+			'limit'	=> $this->settings['records_per_sync']
 		));
 
-		# Setup the Subscriber record
-		$this->Subscriber->Behaviors->attach('CampaignMonitor.Subscriber', array(
-			'ApiKey'		=> $settings['API_KEY'],
-			'ListId'		=> $settings['LIST_ID'],
-			'CustomFields'	=> $settings['CUSTOM_FIELDS'],
-			'optin'			=> $settings['optin'],
-			'config'		=> $settings
-		));
-
-				
+		
+	}
+	
+	function __sync($records) {
+		
 		foreach($records as $i => $subscriber) {
 			
 			// Check if this subscriber exists in CM ?
@@ -63,7 +87,7 @@ class SynchronizationController extends AppController {
 			}
 		}
 		
-		debug($this->result);
+		debug($this->result);		
 	}
 	
 }
