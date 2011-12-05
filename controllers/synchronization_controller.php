@@ -62,6 +62,8 @@ class SynchronizationController extends AppController {
 				$this->result['synced']++;
 			}
 		}
+		
+		debug($this->result);
 	}
 	
 }
