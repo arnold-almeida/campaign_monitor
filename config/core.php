@@ -19,6 +19,10 @@
 # Debug mode ?
 Configure::write('CampaignMonitor.debug', false);
 Configure::write('CampaignMonitor.settings', array(
+	'API_KEY'			=> null,		
+	'LIST_ID'			=> null,		
+	'CUSTOM_FIELDS'		=> array(),		
+	'optin'				=> false,		
 	'subcriber_model'	=> 'User',		// User model to iniialize
 	'sync_key'			=> 'cm_last_synced',
 	'records_per_sync'	=> 500,

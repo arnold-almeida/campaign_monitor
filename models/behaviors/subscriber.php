@@ -43,7 +43,7 @@ class SubscriberBehavior extends ModelBehavior
 	/**
 	* @var CampaignMonitor
 	*/
-	var $cm;
+	var $_CM;
 
 	function setup(&$model, $settings) {
 		if (!isset($this->settings[$model->alias])) {
@@ -58,21 +58,12 @@ class SubscriberBehavior extends ModelBehavior
 			);
 		}
 		$this->settings[$model->alias] = array_merge($this->settings[$model->alias], (array) $settings);
-		$this->cm = $this->cm($model);
-	}
-
-	/**
-	* Creates the CM object to be used by the class.
-	*
-	* @param mixed $model
-	* @return CampaignMonitor
-	*/
-	function cm(&$model) {
-		App::import('Vendor', 'CampaignMonitor.CampaignMonitor', array('file' => 'CampaignMonitor' . DS . 'CMBase.php'));
+		
+		# Init the object
+		App::import('Vendor', 'CampaignMonitor.CS_REST_Subscribers', array('file' => 'CampaignMonitor' . DS . 'csrest_subscribers.php'));
 		$settings = $this->settings[$model->alias];
 		extract($settings);
-		$cm = new CampaignMonitor( $ApiKey, null, null, $ListId );
-		return $cm;
+		$this->_CM = new CS_REST_Subscribers($ListId, $ApiKey);
 	}
 
 	/**
@@ -82,7 +73,7 @@ class SubscriberBehavior extends ModelBehavior
 	* @param mixed $created
 	*/
 	function afterSave(&$model, $created) {
-		$this->syncRecord($model, $created);
+		//$this->syncRecord($model, $created);
 	}
 	
 	/**
@@ -91,20 +82,45 @@ class SubscriberBehavior extends ModelBehavior
 	 * @param mixed $model
 	 * @param mixed $created 
 	 */
-	function syncRecord(&$model, $created) {
+	function syncRecord(&$model, $data) {
 		$settings = $this->settings[$model->alias];
 		extract($settings);
-		$data = $model->read();
-		list($email, $name, $hasOpted) = $this->_extract($model, $data);
-
-		// unsubscribe if this is existing and he hasnt opted in
-		if ( !$created && !$hasOpted ) {
-			$result = $this->_unsubscribe($email);
+		
+		$cmRecord = array(
+			'EmailAddress'	=> $data[$model->alias]['email'],
+			'Name'			=> (isset($data[$model->alias]['name'])) ? $data[$model->alias]['email'] : "",
+			'CustomFields'	=> $this->_mapCustomFields($CustomFields, $data, array('alias' => $model->alias))
+		);
+		
+		$response = $this->_CM->update($data[$model->alias]['email'], $cmRecord);
+		
+		if(200 == $response->http_status_code) {
+			// Cool! Flag this record as being synced...
+			$model->id = $data[$model->alias]['id'];
+			$model->saveField($settings['config']['sync_key'], date('Y-m-d H:i:s', time()));
+			
+			return true;
 		}
-		// subscribe he has opted
-		else if ( $hasOpted ) {
-			$result = $this->subscribe($model, $data);
+		
+		return false;
+	}
+	
+	/**
+	 *
+	 * @param type $customFields
+	 * @param type $data 
+	 */	
+	function _mapCustomFields($customFields, $data, $options=array()) {
+		$out  = array();
+		foreach($customFields as $model_field => $cm_field) {
+			if(isset($data[$options['alias']][$model_field]) && !empty($data[$options['alias']][$model_field])) {
+				$out[] = array(
+					'Key'	=> $cm_field,
+					'Value'	=> $data[$options['alias']][$model_field],
+				);
+			}
 		}
+		return $out;
 	}
 
 	/**
@@ -235,5 +251,21 @@ class SubscriberBehavior extends ModelBehavior
 		else
 			trigger_error('Campaign Monitor Error: ' . $result['Result']['Message']);
 	}
+	
+/**
+ * Checks if this Subscriber exists in CM returns FALSE when Subscriber is not found in list
+ * 
+ * @param String $email 
+ * @return Array $data
+ */	
+	function assertRecord(&$model, $email) {
+		$data = $this->_CM->get($email);
+		
+		// Subscriber is not in list !
+		if(isset($data->response->Code) && 203 == $data->response->Code) {
+			return false;
+		}
+		
+		return $data;
+	}
 }
-?>
