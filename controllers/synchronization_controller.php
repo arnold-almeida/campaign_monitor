@@ -16,6 +16,7 @@ class SynchronizationController extends AppController {
 	function beforeFilter() {
 		
 		Configure::write('debug', 2);
+		$this->layout = 'ajax';
 		
 		$this->settings		= Configure::read('CampaignMonitor.settings');
 		$this->Subscriber	= ClassRegistry::init($this->settings['subcriber_model']);
