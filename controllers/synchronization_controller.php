@@ -35,20 +35,14 @@ class SynchronizationController extends AppController {
 	}
 	
 	function synchronize_new_subscribers() {
-		$isCron = Configure::read('App.environment.cron');
-		if(1 == $isCron) {
-			$this->Subscriber->contain();
-			$records = $this->Subscriber->find('all', array(
-				'conditions' => array(
-					"{$this->Subscriber->alias}.{$this->settings['sync_key']} IS NULL",
-				),
-				'limit'	=> $this->settings['records_per_sync']
-			));
-			$this->__sync($records);
-			
-		} else {
-			$this->log("The method CampaignMonitor.Synchronization.synchronize_new_subscribers is only allowed via the cron");
-		}
+		$this->Subscriber->contain();
+		$records = $this->Subscriber->find('all', array(
+			'conditions' => array(
+				"{$this->Subscriber->alias}.{$this->settings['sync_key']} IS NULL",
+			),
+			'limit'	=> $this->settings['records_per_sync']
+		));
+		$this->__sync($records);
 	}
 		
 /**
