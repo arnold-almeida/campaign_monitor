@@ -34,22 +34,12 @@ class SynchronizationController extends AppController {
 		parent::beforeFilter();
 	}
 	
-	function synchronize_new_subscribers() {
-		$this->Subscriber->contain();
-		$records = $this->Subscriber->find('all', array(
-			'conditions' => array(
-				"{$this->Subscriber->alias}.{$this->settings['sync_key']} IS NULL",
-			),
-			'limit'	=> $this->settings['records_per_sync']
-		));
-		$this->__sync($records);
-	}
-		
 /**
- * Syncs WebApp->CampaignMonitor
- * - Only syncs Subscribers that have never been updated...
+ * 
  */	
-	function admin_synchronize_new_subscribers() {
+	function synchronize_new_subscribers() {
+		
+		Configure::write('debug', 1);
 		
 		$this->Subscriber->contain();
 		$records = $this->Subscriber->find('all', array(
@@ -58,10 +48,9 @@ class SynchronizationController extends AppController {
 			),
 			'limit'	=> $this->settings['records_per_sync']
 		));
-					
 		$this->__sync($records);
 	}
-	
+
 /**
  * Syncs WebApp->CampaignMonitor
  * - Syncs Subscribers that have not been synced synced in the last 24 hours ??
@@ -85,11 +74,10 @@ class SynchronizationController extends AppController {
 		foreach($records as $i => $subscriber) {
 			
 			// Check if this subscriber exists in CM ?
-			$cmRecord = $this->Subscriber->assertRecord($subscriber[$this->Subscriber->alias]['email']);
+			$cmRecord = $this->Subscriber->assertCMRecord($subscriber[$this->Subscriber->alias]['email']);
 			
 			if(false == $cmRecord) {
-				debug('TODO');
-				debug($this->result);
+				$this->log('@TODO - Need to write add CM Subscriber API');
 				die();exit();
 				$this->Subscriber->addRecord();
 				$this->result['added']++;

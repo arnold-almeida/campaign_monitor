@@ -244,6 +244,7 @@ class SubscriberBehavior extends ModelBehavior
 		list($email, $name, $hasOpted) = $this->_extract($model, $data);
 		$this->_unsubscribe($email);
 	}
+	
 	function _unsubscribe($email) {
 		$result = $this->cm->subscriberUnsubscribe($email);
 		if ($result['Result']['Code'] == 0)
@@ -258,7 +259,7 @@ class SubscriberBehavior extends ModelBehavior
  * @param String $email 
  * @return Array $data
  */	
-	function assertRecord(&$model, $email) {
+	function assertCMRecord(&$model, $email) {
 		$data = $this->_CM->get($email);
 		
 		// Subscriber is not in list !
