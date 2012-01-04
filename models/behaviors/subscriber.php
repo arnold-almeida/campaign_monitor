@@ -4,8 +4,8 @@
  *
  * @filesource
  * @author Craig Morris
- * @link http://waww.com.au/campaign-monitor-behavior
- * @version	0.1
+ * @author Arnold Almeida <arnold@coppaalmeida.com>
+ * @version	0.2
  * @license	http://www.opensource.org/licenses/mit-license.php The MIT License
  * @package app
  * @subpackage app.models.behaviors
@@ -15,6 +15,9 @@
  * Model behavior to support synchronisation of member records with Campaign Monitor.
  *
  * Features:
+ * 
+ * 
+ * Todo:
  * - Will add members to campaign monitor after saving.
  * - Will unsubscribe members from campaign monitor after a member is deleted.
  * - Adding subscribers with custom fields from your member model (even if they have different names)
@@ -45,6 +48,11 @@ class SubscriberBehavior extends ModelBehavior
 	*/
 	var $_CM;
 
+/**
+ * 
+ * @param type $model
+ * @param type $settings 
+ */	
 	function setup(&$model, $settings) {
 		if (!isset($this->settings[$model->alias])) {
 			$this->settings[$model->alias] = array(
@@ -65,24 +73,15 @@ class SubscriberBehavior extends ModelBehavior
 		extract($settings);
 		$this->_CM = new CS_REST_Subscribers($ListId, $ApiKey);
 	}
-
-	/**
-	* Checks the data after a save and subscribes / unsubscribes them
-	*
-	* @param mixed $model
-	* @param mixed $created
-	*/
-	function afterSave(&$model, $created) {
-		//$this->syncRecord($model, $created);
-	}
 	
-	/**
-	 * Public function to sync the record, used in afterSave or manual sync calls
-	 * 
-	 * @param mixed $model
-	 * @param mixed $created 
-	 */
-	function syncRecord(&$model, $data) {
+/**
+* Public function to sync the record, used in afterSave or manual sync calls
+* 
+* @param mixed $model
+* @param mixed $created 
+*/
+	function syncCMRecord(&$model, $data) {
+		
 		$settings = $this->settings[$model->alias];
 		extract($settings);
 		
@@ -95,6 +94,37 @@ class SubscriberBehavior extends ModelBehavior
 		$response = $this->_CM->update($data[$model->alias]['email'], $cmRecord);
 		
 		if(200 == $response->http_status_code) {
+			// Cool! Flag this record as being synced...
+			$model->id = $data[$model->alias]['id'];
+			$model->saveField($settings['config']['sync_key'], date('Y-m-d H:i:s', time()));
+			
+			return true;
+		}
+		
+		return false;
+	}
+	
+/**
+* Public function to add a new Subscriber record
+* 
+* @param mixed $model
+* @param mixed $created 
+*/
+	function addCMRecord(&$model, $data) {
+		
+		$settings = $this->settings[$model->alias];
+		extract($settings);
+		
+		$cmRecord = array(
+			'EmailAddress'	=> $data[$model->alias]['email'],
+			'Name'			=> (isset($data[$model->alias]['name'])) ? $data[$model->alias]['email'] : "",
+			'CustomFields'	=> $this->_mapCustomFields($CustomFields, $data, array('alias' => $model->alias)),
+			'Resubscribe'	=> false
+		);
+		
+		$response = $this->_CM->add($cmRecord);
+		
+		if(201 == $response->http_status_code) {
 			// Cool! Flag this record as being synced...
 			$model->id = $data[$model->alias]['id'];
 			$model->saveField($settings['config']['sync_key'], date('Y-m-d H:i:s', time()));
@@ -167,15 +197,15 @@ class SubscriberBehavior extends ModelBehavior
 		return $arr;
 	}
 
-	/**
-	* Returns an array of all the custom fields to be sent to campaign monitor, this
-	* comprises of the CustomFields (from the model data) and the static fields (
-	* these are usually constant flags or something)
-	*
-	* @param mixed $data
-	* @param mixed $CustomFields
-	* @param mixed $StaticFields
-	*/
+/**
+* Returns an array of all the custom fields to be sent to campaign monitor, this
+* comprises of the CustomFields (from the model data) and the static fields (
+* these are usually constant flags or something)
+*
+* @param mixed $data
+* @param mixed $CustomFields
+* @param mixed $StaticFields
+*/
 	function _getCustomFields($data, $CustomFields, $StaticFields)
 	{
 		$myCustomFields = array();
@@ -195,74 +225,17 @@ class SubscriberBehavior extends ModelBehavior
 		return $myCustomFields;
 	}
 
-	/**
-	* If deleting a model, lets unsubsribe them
-	*
-	* @param mixed $model
-	* @return boolean
-	*/
-	function beforeDelete(&$model) {
-		$this->unsubscribe($model);
-	}
-
-	/**
-	* Subscribes the model into campaign monitor
-	*
-	* @param mixed $model
-	* @param mixed $data
-	*/
-	function subscribe(&$model, $data = null)
-	{
-		$settings = $this->settings[$model->alias];
-		extract($settings);
-		if ( !$data ) {
-			$data = $model->read();
-		}
-		list($email, $name, $hasOpted) = $this->_extract($model, $data);
-
-		$custom_fields = $this->_getCustomFields($data[$model->alias], $CustomFields, $StaticFields);
-
-		$this->_subscribe($email, $name, $custom_fields);
-	}
-	function _subscribe($email, $name = null, $custom_fields = array()) {
-		$result = $this->cm->subscriberAddAndResubscribeWithCustomFields($email, $name, $custom_fields);
-		if ($result['Code'] == 0)
-			return true;
-		else
-			trigger_error('Campaign Monitor Error: ' . $result['Message']);
-	}
-
-	/**
-	* Unsubscribes the model from campaign monitor
-	*
-	* @param mixed $model
-	*/
-	function unsubscribe(&$model) {
-		$settings = $this->settings[$model->alias];
-		extract($settings);
-		$data = $model->read();
-		list($email, $name, $hasOpted) = $this->_extract($model, $data);
-		$this->_unsubscribe($email);
-	}
-	
-	function _unsubscribe($email) {
-		$result = $this->cm->subscriberUnsubscribe($email);
-		if ($result['Result']['Code'] == 0)
-			return true;
-		else
-			trigger_error('Campaign Monitor Error: ' . $result['Result']['Message']);
-	}
 	
 /**
- * Checks if this Subscriber exists in CM returns FALSE when Subscriber is not found in list
+ * Checks if this Subscriber exists in CM returns FALSE when Subscriber is not found in configured API list
  * 
  * @param String $email 
  * @return Array $data
  */	
 	function assertCMRecord(&$model, $email) {
+		
 		$data = $this->_CM->get($email);
 		
-		// Subscriber is not in list !
 		if(isset($data->response->Code) && 203 == $data->response->Code) {
 			return false;
 		}

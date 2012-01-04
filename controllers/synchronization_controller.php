@@ -1,6 +1,6 @@
 <?php
 /**
- * @todo Refactor as shell command
+ * @todo Refactor as shell command for Cake 2.0
  */
 class SynchronizationController extends AppController {
 	
@@ -14,9 +14,6 @@ class SynchronizationController extends AppController {
 	);
 	
 	function beforeFilter() {
-		
-		Configure::write('debug', 2);
-		$this->layout = 'ajax';
 		
 		$this->settings		= Configure::read('CampaignMonitor.settings');
 		$this->Subscriber	= ClassRegistry::init($this->settings['subcriber_model']);
@@ -39,7 +36,8 @@ class SynchronizationController extends AppController {
  */	
 	function synchronize_new_subscribers() {
 		
-		Configure::write('debug', 1);
+		$this->autoLayout	= false;
+		$this->layout		= 'ajax';
 		
 		$this->Subscriber->contain();
 		$records = $this->Subscriber->find('all', array(
@@ -50,44 +48,25 @@ class SynchronizationController extends AppController {
 		));
 		$this->__sync($records);
 	}
-
-/**
- * Syncs WebApp->CampaignMonitor
- * - Syncs Subscribers that have not been synced synced in the last 24 hours ??
- */		
-	function admin_synchronize_subscribers() {
-		
-		# Get the records that have not yet been synced or updated in the last day
-		$this->Subscriber->contain();
-		$records = $this->Subscriber->find('all', array(
-			'conditions' => array(
-				"{$this->Subscriber->alias}.{$this->settings['sync_key']}" => date('Y-m-d H:i:s', strtotime('-1 Day', time())),
-			),
-			'limit'	=> $this->settings['records_per_sync']
-		));
-
-		
-	}
 	
 	function __sync($records) {
-		
 		foreach($records as $i => $subscriber) {
-			
 			// Check if this subscriber exists in CM ?
 			$cmRecord = $this->Subscriber->assertCMRecord($subscriber[$this->Subscriber->alias]['email']);
 			
 			if(false == $cmRecord) {
-				$this->log('@TODO - Need to write add CM Subscriber API');
-				die();exit();
-				$this->Subscriber->addRecord();
+				$this->Subscriber->addCMRecord($subscriber);
 				$this->result['added']++;
 			} else {
-				$this->Subscriber->syncRecord($subscriber);
+				$this->Subscriber->syncCMRecord($subscriber);
 				$this->result['synced']++;
 			}
 		}
 		
-		debug($this->result);		
+		$found = count($records);
+		$this->log("Found	: {$found} records to sync");
+		$this->log("Added	: {$this->result['added']}");
+		$this->log("Synced	: {$this->result['synced']}");
 	}
 	
 }
